@@ -43,7 +43,10 @@ retriever = vector_store.as_retriever(search_kwargs={"k": 2})
 
 
 
-class AgentState(TypedDict):                #definição do estado, ele precisa saber as mensagens e "quem" é o próximo a agir
+# O AgentState guarda a memória do nosso robô.
+# Ele mantém o histórico de mensagens (lista que acumula as conversas)
+# e salva "quem" fará o próximo passo na variável 'next'.
+class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     next: str
 
@@ -62,7 +65,10 @@ web_search = DuckDuckGoSearchRun()
 
 def agente_pesquisador(state: AgentState):
     """Agente especialista em buscar na internet."""
-    ultima_mensagem = state["messages"][-1].content
+    lista_de_mensagens = state["messages"]
+    objeto_ultima_mensagem = lista_de_mensagens[-1]
+    ultima_mensagem = objeto_ultima_mensagem.content
+    
     print(f"\n[Agente Pesquisador] Buscando na Web por: {ultima_mensagem}")
     
     resultado = web_search.invoke(ultima_mensagem)
@@ -73,11 +79,19 @@ def agente_pesquisador(state: AgentState):
 
 def agente_rag(state: AgentState):
     """Agente especialista no documento PDF da empresa."""
-    ultima_mensagem = state["messages"][-1].content
+    lista_de_mensagens = state["messages"]
+    objeto_ultima_mensagem = lista_de_mensagens[-1]
+    ultima_mensagem = objeto_ultima_mensagem.content
+    
     print(f"\n[Agente RAG] Buscando no Banco Vetorial...")
     
     documentos = retriever.invoke(ultima_mensagem)
-    contexto = "\n\n".join([doc.page_content for doc in documentos])
+    
+    textos_extraidos = []
+    for doc in documentos:
+        textos_extraidos.append(doc.page_content)
+        
+    contexto = "\n\n".join(textos_extraidos)
     
 
     # print(f"[RAG] Chunks recuperados:\n{contexto}")
@@ -133,9 +147,13 @@ workflow.add_node("RAG", agente_rag)
 workflow.add_edge(START, "Supervisor")
 
 
+def dizer_proximo_passo(state: AgentState):
+    return state["next"]
+
+
 workflow.add_conditional_edges(         # O Edge Condicional: O que o Supervisor decidir dita o próximo nó
     "Supervisor",
-    lambda state: state["next"],
+    dizer_proximo_passo,
     {
         "Pesquisador": "Pesquisador",
         "RAG": "RAG",
